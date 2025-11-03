@@ -5,12 +5,12 @@ from .ch_discover_loss import DynamicalContrastiveLoss
 
 
 class PreNorm(nn.Module):
-    def __init__(self, dim, fn):        # dim=
+    def __init__(self, dim, fn):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.fn = fn
 
-    def forward(self, x, **kwargs):         # [bs*patch_num, n_vars, d_model]
+    def forward(self, x, **kwargs):
         return self.fn(self.norm(x), **kwargs)
 
 
@@ -61,14 +61,14 @@ class c_Attention(nn.Module):
 
         scores = einsum('b h i d, b h j d -> b h i j', q, k)
 
-        q_norm = torch.norm(q, dim=-1, keepdim=True)    # q的范数
-        k_norm = torch.norm(k, dim=-1, keepdim=True)    # k的范数
-        norm_matrix = torch.einsum('bhid,bhjd->bhij', q_norm, k_norm)    # q和k范数的乘积的矩阵,用于后面dynamicalContranstiveLoss中归一化Q·Kᵀ
+        q_norm = torch.norm(q, dim=-1, keepdim=True)
+        k_norm = torch.norm(k, dim=-1, keepdim=True)
+        norm_matrix = torch.einsum('bhid,bhjd->bhij', q_norm, k_norm)
         if attn_mask is not None:
             def _mask(scores, attn_mask):
                 large_negative = -math.log(1e10)
-                attention_mask = torch.where(attn_mask == 0, large_negative, 0)     # 将attn_mask=0的地方赋值large_negative, 不为0(为1)的地方赋值0
-                scores = scores * attn_mask.unsqueeze(1) + attention_mask.unsqueeze(1)      # 公式7
+                attention_mask = torch.where(attn_mask == 0, large_negative, 0)
+                scores = scores * attn_mask.unsqueeze(1) + attention_mask.unsqueeze(1)
                 return scores
 
             masked_scores = _mask(scores, attn_mask)    # masked_scores : [bs*patch_num, 1, n_nars, n_nars]
@@ -79,9 +79,9 @@ class c_Attention(nn.Module):
             dynamical_contrastive_loss = 0
 
         attn = self.attend(masked_scores * scale)
-        out = einsum('b h i j, b h j d -> b h i d', attn, v)       # out : [bs*patch_num, num_heads(默认为1),  n_nars, inner_dim]
+        out = einsum('b h i j, b h j d -> b h i d', attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')        #  out : [bs*patch_num, n_nars, inner_dim(num_heads*inner_dim)]
-        out = self.to_out(out)      # out : [bs*patch_num, n_nars, cf_dim]  投影回原始维度
+        out = self.to_out(out)      # out : [bs*patch_num, n_nars, cf_dim]
         return out, attn, dynamical_contrastive_loss
 
 
@@ -99,12 +99,11 @@ class c_Transformer(nn.Module):  ##Register the blocks into whole network
 
     def forward(self, x, attn_mask=None):     # x : [bs*patch_num, n_nars, cf_dim]
         total_loss = 0
-        # 下面for循环的操作是：层归一化 -> 注意力 -> 残差连接 -> 层归一化 -> FFN -> 残差连接
         for attn, ff in self.layers:
             x_n, attn, dcloss = attn(x, attn_mask=attn_mask)
             total_loss += dcloss
-            x = x + x_n.clone()     # 残差连接      transformer,经过注意力机制和FFN之后都需要进行残差连接
-            x = x + ff(x).clone()       # 残差连接
+            x = x + x_n.clone()
+            x = x + ff(x).clone()
         dcloss = total_loss / len(self.layers)
         return x, attn, dcloss
 
@@ -124,7 +123,7 @@ class Trans_C(nn.Module):
         self.mlp_head = nn.Linear(dim, d_model)  # horizon)
 
     def forward(self, x, attn_mask=None):   # x : [bs * patch_num, n_vars, patch_len]
-        x = self.to_patch_embedding(x)      # 线性映射 [bs*patch_num, n_vars, patch_len] -> [bs*patch_num, n_vars, cf_dim]
+        x = self.to_patch_embedding(x)      # [bs*patch_num, n_vars, patch_len] -> [bs*patch_num, n_vars, cf_dim]
         x, attn, dcloss = self.transformer(x, attn_mask)
         x = self.dropout(x)
         x = self.mlp_head(x).squeeze()
@@ -143,9 +142,9 @@ class Trans_ours(nn.Module):
                                          regular_lambda=regular_lambda,
                                          temperature=temperature)
 
-        self.mlp_head = nn.Linear(dim, d_model)  # horizon)
+        self.mlp_head = nn.Linear(dim, d_model)
 
-    def forward(self, x, attn_mask=None):  # x : [bs * patch_num, n_vars, patch_len]
+    def forward(self, x, attn_mask=None):
         x, attn, dcloss = self.transformer(x, attn_mask)
         x = self.dropout(x)
         x = self.mlp_head(x).squeeze()

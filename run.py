@@ -1,6 +1,6 @@
 import argparse
 import torch.backends
-from exp.exp_AAAA_cat_loss2_0915 import Exp_Anomaly_Prediction
+from exp.exp_anomaly_prediction import Exp_Anomaly_Prediction
 import random
 import numpy as np
 
@@ -45,105 +45,105 @@ def set_default_args(args):
 guide_model = 'iTransGuide'
 
 def run_model(model):
-    parser = argparse.ArgumentParser(description='时间序列异常预测')
+    parser = argparse.ArgumentParser(description='Time Series Anomaly Prediction')
 
-    # 基础配置
-    parser.add_argument('--task_name', type=str, default='anomaly_prediction', help='任务名称')
-    parser.add_argument('--is_training', type=int, default=0, help='训练模式: 1表示训练, 0表示测试')
-    parser.add_argument('--use_guide', type=bool, default=1, help='是否使用guide model')
-    parser.add_argument('--train_guide', type=bool, default=0, help='是否需要训练guide_model')
-    parser.add_argument('--cat_train', type=bool, default=1, help='是否使用cat_train')
-    parser.add_argument('--des', type=str, default='Exp_test', help='实验描述')
+    # Basic configuration
+    parser.add_argument('--task_name', type=str, default='anomaly_prediction', help='Task name')
+    parser.add_argument('--is_training', type=int, default=0, help='Training mode: 1 for training, 0 for testing')
+    parser.add_argument('--use_guide', type=bool, default=1, help='Whether to use guide model')
+    parser.add_argument('--train_guide', type=bool, default=0, help='Whether to train guide_model')
+    parser.add_argument('--cat_train', type=bool, default=1, help='Whether to use cat_train')
+    parser.add_argument('--des', type=str, default='Exp_0', help='Experiment description')
 
-
-    # 数据加载配置
-    parser.add_argument('--data', type=str, default='ASD_dataset_1', help='数据集名称')
-    parser.add_argument('--root_path', type=str, default='dataset/data/', help='数据文件根目录')
-    parser.add_argument('--data_path', type=str, default='ASD_dataset_1.csv', help='数据文件名')
-    parser.add_argument('--c_in', type=int, default=19, help='输入特征数')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints_AAA20920/', help='模型检查点保存位置')
-    parser.add_argument('--seq_len', type=int, default=96, help='输入序列长度')
-    parser.add_argument('--detec_seq_len', type=int, default=192, help='检测序列长度,默认为预测长度的两倍')
-    parser.add_argument('--pred_len', type=int, default=32, help='输出序列长度')
+    # Data loading configuration
+    parser.add_argument('--data', type=str, default='MSL', help='Dataset name')
+    parser.add_argument('--root_path', type=str, default='dataset/data/', help='Root path of data files')
+    parser.add_argument('--data_path', type=str, default='MSL.csv', help='Data file name')
+    parser.add_argument('--c_in', type=int, default=55, help='Number of input features')
+    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='Location to save model checkpoints')
+    parser.add_argument('--seq_len', type=int, default=32, help='Input sequence length')
+    parser.add_argument('--detec_seq_len', type=int, default=64,
+                        help='Detection sequence length, default is twice the prediction length')
+    parser.add_argument('--pred_len', type=int, default=32, help='Output sequence length')
     parser.add_argument('--label_len', type=int, default=0)
-    parser.add_argument('--step', type=int, default=1, help='每次窗口移动步长')
-    parser.add_argument('--batch_size', type=int, default=64, help='训练批次大小')
-    parser.add_argument('--train_epochs', type=int, default=7, help='训练轮数')
+    parser.add_argument('--step', type=int, default=1, help='Window moving step size')
+    parser.add_argument('--batch_size', type=int, default=64, help='Training batch size')
+    parser.add_argument('--train_epochs', type=int, default=7, help='Number of training epochs')
 
-    # 预测模型通用配置
-    parser.add_argument('--d_model', type=int, default=32, help='预测频域损失权重')
-    parser.add_argument('--d_ff', type=int, default=32, help='预测前馈网络维度')
+    # Prediction model general configuration
+    parser.add_argument('--d_model', type=int, default=32, help='Prediction frequency domain loss weight')
+    parser.add_argument('--d_ff', type=int, default=32, help='Prediction feedforward network dimension')
     parser.add_argument('--affine', type=int, default=0)
     parser.add_argument('--subtract_last', type=int, default=0)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--head_dropout', type=float, default=0.1)
-    parser.add_argument('--pred_alpha', type=float, default=0.1, help='预测中时域和频域的损失权重比例')
-    parser.add_argument('--auxi_lambda', type=float, default=0.0, help='辅助损失(频域损失)权重')
-    parser.add_argument('--guide_lambda', type=float, default=0.01, help='教师指导重构损失权重')
-    parser.add_argument('--dc_lambda', type=float, default=0.5, help='动态对比损失权重')
-    parser.add_argument('--detec_lambda', type=int, default=0., help='重构和预测的损失权重比例')
-    parser.add_argument('--score_lambda', type=float, default=0., help='测试时频域分数权重')
-    parser.add_argument('--ratio', type=int, default=list(range(0, 100)), help='预设异常比例(%)')
+    parser.add_argument('--pred_alpha', type=float, default=0.1,
+                        help='Loss weight ratio between time domain and frequency domain in prediction')
+    parser.add_argument('--auxi_lambda', type=float, default=0.1, help='Auxiliary loss (frequency domain loss) weight')
+    parser.add_argument('--guide_lambda', type=float, default=0.1, help='Teacher guidance reconstruction loss weight')
+    parser.add_argument('--dc_lambda', type=float, default=0.1, help='Dynamic contrastive loss weight')
+    parser.add_argument('--detec_lambda', type=int, default=0.1,
+                        help='Loss weight ratio between reconstruction and prediction')
+    parser.add_argument('--score_lambda', type=float, default=0.1, help='Frequency domain score weight during testing')
+    parser.add_argument('--ratio', type=int, default=list(range(0, 100)), help='Preset anomaly ratio (%)')
 
-    # 优化配置
-    parser.add_argument('--num_workers', type=int, default=0, help='数据加载线程数')
-    parser.add_argument('--itr', type=int, default=1, help='实验重复次数')
-    parser.add_argument('--lr', type=float, default=1e-4, help='优化器学习率')
-    parser.add_argument('--patience', type=int, default=3, help='早停耐心值')
+    # Optimization configuration
+    parser.add_argument('--num_workers', type=int, default=0, help='Number of data loading threads')
+    parser.add_argument('--itr', type=int, default=1, help='Number of experiment repetitions')
+    parser.add_argument('--lr', type=float, default=1e-4, help='Optimizer learning rate')
+    parser.add_argument('--patience', type=int, default=3, help='Early stopping patience value')
 
-    # GPU配置
-    parser.add_argument('--use_gpu', type=bool, default=True, help='是否使用GPU')
-    parser.add_argument('--gpu', type=int, default=0, help='使用的GPU编号')
-    parser.add_argument('--gpu_type', type=str, default='cuda', help='GPU类型: cuda或mps')
-    parser.add_argument('--use_multi_gpu', action='store_true', help='是否使用多GPU', default=False)
-    parser.add_argument('--devices', type=str, default='0', help='多GPU设备ID')
+    # GPU configuration
+    parser.add_argument('--use_gpu', type=bool, default=True, help='Whether to use GPU')
+    parser.add_argument('--gpu', type=int, default=0, help='GPU index to use')
+    parser.add_argument('--gpu_type', type=str, default='cuda', help='GPU type: cuda or mps')
+    parser.add_argument('--use_multi_gpu', action='store_true', help='Whether to use multiple GPUs', default=False)
+    parser.add_argument('--devices', type=str, default='0', help='Multiple GPU device IDs')
 
-    # 模型特定配置
-    # Leddam 模型超参
-    parser.add_argument('--pe_type', type=str, default='no', help='position embedding type')
-    parser.add_argument('--n_layers', type=int, default=3, help='n_layers of DEFT Block')
+    # Model specific configuration
+    # Leddam model hyperparameters
+    parser.add_argument('--pe_type', type=str, default='no', help='Position embedding type')
+    parser.add_argument('--n_layers', type=int, default=3, help='Number of layers in DEFT Block')
 
+    # MIDformer hyperparameters
+    parser.add_argument('--detec_cf_dim', type=int, default=32,
+                        help='Feature dimension of frequency domain Transformer')
+    parser.add_argument('--detec_d_ff', type=int, default=64, help='Feedforward network dimension')
+    parser.add_argument('--detec_d_model', type=int, default=64, help='Model hidden layer dimension')
+    parser.add_argument('--detec_dropout', type=float, default=0.1, help='Regular dropout rate')
+    parser.add_argument('--detec_attn_dropout', type=float, default=0.1, help='Attention dropout rate')
+    parser.add_argument('--detec_intra_e_layers', type=int, default=2, help='Number of encoder layers')
+    parser.add_argument('--detec_inter_e_layers', type=int, default=2, help='Number of encoder layers')
+    parser.add_argument('--detec_head_dim', type=int, default=32, help='Attention head dimension')
+    parser.add_argument('--detec_head_dropout', type=float, default=0.1, help='Attention head dropout rate')
+    parser.add_argument('--detec_n_heads', type=int, default=4, help='Number of attention heads')
+    parser.add_argument('--detec_patch_len', type=int, default=16, help='Patch size during training')
+    parser.add_argument('--detec_patch_stride', type=int, default=16, help='Patch stride during training')
 
+    # Teacher model hyperparameters
+    parser.add_argument('--guide_d_model', type=int, default=64)
+    parser.add_argument('--guide_d_ff', type=int, default=64)
+    parser.add_argument('--guide_dropout', type=float, default=0.1)
+    parser.add_argument('--guide_class_strategy', type=str, default='projection',
+                        help='projection/average/cls_token')
+    parser.add_argument('--guide_factor', type=int, default=1, help='Attention factor')
+    parser.add_argument('--guide_e_layers', type=int, default=2, help='Number of encoder layers')
+    parser.add_argument('--guide_output_attention', action='store_true',
+                        help='Whether to output attention in encoder')
+    parser.add_argument('--guide_use_norm', type=int, default=True, help='Use norm and denorm')
+    parser.add_argument('--guide_n_heads', type=int, default=8, help='Number of heads')
 
-    # CATCH 超参
-    parser.add_argument('--detec_cf_dim', type=int, default=32, help='频域Transformer的特征维度')
-    parser.add_argument('--detec_d_ff', type=int, default=64, help='前馈网络维度')
-    parser.add_argument('--detec_d_model', type=int, default=64, help='模型隐藏层维度')
-    parser.add_argument('--detec_dropout', type=float, default=0.1, help='普通dropout率')
-    parser.add_argument('--detec_attn_dropout', type=float, default=0.1, help='dropout')
-    parser.add_argument('--detec_intra_e_layers', type=int, default=2, help='编码器层数')
-    parser.add_argument('--detec_inter_e_layers', type=int, default=2, help='编码器层数')
-    parser.add_argument('--detec_head_dim', type=int, default=32, help='注意力头维度')
-    parser.add_argument('--detec_head_dropout', type=float, default=0.1, help='注意力头dropout率')
-    parser.add_argument('--detec_n_heads', type=int, default=4, help='注意力头数量')
-    parser.add_argument('--detec_patch_len', type=int, default=16, help='训练时patch大小')
-    parser.add_argument('--detec_patch_stride', type=int, default=16, help='训练时patch步长')
-
-    if 'iTransGuide' in guide_model:
-        parser.add_argument('--guide_d_model', type=int, default=64)
-        parser.add_argument('--guide_d_ff', type=int, default=64)
-        parser.add_argument('--guide_dropout', type=float, default=0.1)
-        parser.add_argument('--guide_class_strategy', type=str, default='projection',
-                            help='projection/average/cls_token')
-        parser.add_argument('--guide_factor', type=int, default=1, help='attn factor')
-        parser.add_argument('--guide_e_layers', type=int, default=2, help='编码器层数')
-        parser.add_argument('--guide_output_attention', action='store_true',
-                            help='whether to output attention in ecoder')
-        parser.add_argument('--guide_use_norm', type=int, default=True, help='use norm and denorm')
-        parser.add_argument('--guide_n_heads', type=int, default=8, help='num of heads')
-
-
-
-    # 不重要超参
-    parser.add_argument('--freq', type=str, default='h', help='时间特征编码频率: [s:秒, t:分钟, h:小时, d:天, b:工作日, w:周, m:月], 也可用更细粒度如15min或3h')
-    parser.add_argument('--embed', type=str, default='timeF', help='时间特征编码方式: [timeF, fixed, learned]')
+    parser.add_argument('--freq', type=str, default='h',
+                        help='Time feature encoding frequency: [s:second, t:minute, h:hour, d:day, b:business day, w:week, m:month], can also use finer granularity like 15min or 3h')
+    parser.add_argument('--embed', type=str, default='timeF',
+                        help='Time feature encoding method: [timeF, fixed, learned]')
 
     args = parser.parse_args()
     args = set_default_args(args)
     args.model = model
     args.guide_model = guide_model
 
-    # 设置设备
+    # Set up the equipment
     if torch.cuda.is_available() and args.use_gpu:
         args.device = torch.device('cuda:{}'.format(args.gpu))
         print(f'Using GPU for {model}')
@@ -174,13 +174,10 @@ def run_model(model):
             print(f'\n>>>>>>>>>> Start testing: {setting} <<<<<<<<<<<<\n')
             exp.test(setting)
 
-        elif args.is_training == 0:
+        else:
             print(f'\n>>>>>>>>>> Only testing: {setting} <<<<<<<<<<<<\n')
             exp.test(setting, test=1)
 
-        else:
-            print(f'\n>>>>>>>>>> Showing result: {setting} <<<<<<<<<<<<\n')
-            exp.show_result(setting)
 
         if args.gpu_type == 'mps':
             torch.backends.mps.empty_cache()
@@ -189,7 +186,7 @@ def run_model(model):
 
 
 if __name__ == '__main__':
-    MODELS = ['Leddam_AAA2']
+    MODELS = ['Leddam_MIDformer']
 
     for model in MODELS:
         run_model(model)

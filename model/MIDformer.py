@@ -1,14 +1,5 @@
-'''
-* @author: EmpyreanMoon
-*
-* @create: 2024-08-26 10:28
-*
-* @description: The structure of CATCH
-'''
-
 from layers.RevIN import RevIN
 from layers.cross_channel_Transformer import Trans_ours
-# Cell
 from typing import Callable, Optional
 import numpy as np
 import torch
@@ -48,9 +39,8 @@ class detec_model(nn.Module):
         # print("depth=",cf_depth)
         # Backbone
 
-        # 投影到隐空间
-        self.W_P = nn.Linear(self.patch_len, self.d_model)        # Eq 1: projection of feature vectors onto a d-dim vector space
-        # 位置编码
+        self.W_P = nn.Linear(self.patch_len, self.d_model)
+
         self.W_pos = positional_encoding(pe='zeros', learn_pe=True, q_len=self.seq_len, d_model=self.d_model)
 
         self.in_vars_tranformer = TSTEncoder(self.seq_len, self.d_model, self.n_heads, d_k=None, d_v=None, d_ff=self.d_ff,
@@ -61,7 +51,7 @@ class detec_model(nn.Module):
 
         self.re_attn = True
         self.mask_generator = channel_mask_generator(patch_len=self.d_model, n_vars=self.c_in)
-        self.between_vars_transformer = Trans_ours(dim=self.d_model, depth=self.inter_e_layers, n_heads=self.n_heads,  # n_heads : 多头注意力机制的头数
+        self.between_vars_transformer = Trans_ours(dim=self.d_model, depth=self.inter_e_layers, n_heads=self.n_heads,
                                                    mlp_dim=self.d_ff,
                                                    dim_head=self.head_dim, dropout=configs.detec_dropout,
                                                    patch_dim=self.d_model,
@@ -83,14 +73,14 @@ class detec_model(nn.Module):
                                     head_dropout=self.head_dropout)
 
 
-    def forward(self, z):  # z: [bs, seq_len, n_vars]
-        z = self.revin_layer(z, 'norm')         # [bs, seq_len, n_vars]
+    def forward(self, z):
+        z = self.revin_layer(z, 'norm')
 
-        z = z.permute(0, 2, 1)      # [bs, n_vars, seq_len]
+        z = z.permute(0, 2, 1)
 
         # do patching
         z = z.unfold(dimension=-1, size=self.patch_len,
-                       step=self.patch_stride)  # z1: [bs, n_vars, patch_num, patch_len]
+                       step=self.patch_stride)
 
         # model shape
         batch_size = z.shape[0]
@@ -98,35 +88,27 @@ class detec_model(nn.Module):
         patch_num = z.shape[2]
         patch_len = z.shape[3]
 
-        z = self.W_P(z)     # z1: [bs, n_vars, patch_num, d_model]
+        z = self.W_P(z)
         z = self.dropout(z)
 
-        z = torch.reshape(z, (batch_size * c_in, patch_num, z.shape[-1]))  # [bs*n_vars, patch_num, d_model]
+        z = torch.reshape(z, (batch_size * c_in, patch_num, z.shape[-1]))
 
-        # 进行变量内的注意力计算
-        z = self.in_vars_tranformer(z)     # [bs*n_vars, patch_num, d_model]
+        z = self.in_vars_tranformer(z)
 
-        z = z.view(batch_size, c_in, patch_num, -1).transpose(1, 2).reshape(batch_size * patch_num, c_in, -1)       # [bs*patch_num, n_vars, d_model]
+        z = z.view(batch_size, c_in, patch_num, -1).transpose(1, 2).reshape(batch_size * patch_num, c_in, -1)
 
-        # z = torch.reshape(z, (batch_size, c_in, patch_num, z.shape[-1]))  # [bs, n_vars, patch_num, d_model]
-        #
-        # z = z.permute(0, 2, 1, 3)     # [bs, patch_num, n_vars, d_model]
-        #
-        # # proposed
-        # z = torch.reshape(z, (batch_size * patch_num, c_in, z.shape[-1]))  # [bs*patch_num, n_vars, d_model]
+        channel_mask = self.mask_generator(z)
 
-        channel_mask = self.mask_generator(z)   # [bs*patch_num, n_vars, n_vars]
+        z, dcloss = self.between_vars_transformer(z, channel_mask)
 
-        z, dcloss = self.between_vars_transformer(z, channel_mask)     # z : [bs*patch_num, n_vars, d_model]
+        z = torch.reshape(z, (batch_size, patch_num, c_in, z.shape[-1]))
 
-        z = torch.reshape(z, (batch_size, patch_num, c_in, z.shape[-1]))     # z1: [bs, patch_num, n_vars, d_model]
+        z = z.permute(0, 2, 1, 3)
 
-        z = z.permute(0, 2, 1, 3)  # [bs, n_vars, patch_num, d_model]
-
-        z = self.head_f(z)  # z: [bs, n_vars, seq_len]
+        z = self.head_f(z)
 
         # denorm
-        z = z.permute(0, 2, 1)      # [bs, seq_len, n_vars]
+        z = z.permute(0, 2, 1)
 
         z = self.revin_layer(z, 'denorm')
 
@@ -183,18 +165,16 @@ class TSTEncoderLayer(nn.Module):
         d_k = d_model // n_heads if d_k is None else d_k
         d_v = d_model // n_heads if d_v is None else d_v
 
-        # Multi-Head attention
+
         self.res_attention = res_attention
         self.self_attn = _MultiheadAttention(d_model, n_heads, d_k, d_v, attn_dropout=attn_dropout, proj_dropout=dropout, res_attention=res_attention)
 
-        # Add & Norm
         self.dropout_attn = nn.Dropout(dropout)
-        if "batch" in norm.lower():     # 进行批量归一化还是层归一化
+        if "batch" in norm.lower():
             self.norm_attn = nn.Sequential(Transpose(1,2), nn.BatchNorm1d(d_model), Transpose(1,2))
         else:
             self.norm_attn = nn.LayerNorm(d_model)
 
-        # Position-wise Feed-Forward
         self.ff = nn.Sequential(nn.Linear(d_model, d_ff, bias=bias),
                                 get_activation_fn(activation),
                                 nn.Dropout(dropout),
@@ -217,24 +197,19 @@ class TSTEncoderLayer(nn.Module):
         src2, attn = self.self_attn(src, src, src, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
 
         # Add & Norm
-        src = src + self.dropout_attn(src2)     # 残差连接  [bs*n_vars, patch_num, d_model]
+        src = src + self.dropout_attn(src2)
         src = self.norm_attn(src)
 
         src2 = self.ff(src)
         # Add & Norm
-        src = src + self.dropout_ffn(src2)      # 残差连接  [bs*n_vars, patch_num, d_model]
+        src = src + self.dropout_ffn(src2)
         src = self.norm_ffn(src)
 
         return src
 
 class _MultiheadAttention(nn.Module):
     def __init__(self, d_model, n_heads, d_k=None, d_v=None, res_attention=False, attn_dropout=0., proj_dropout=0., qkv_bias=True, lsa=False):
-        """Multi Head Attention Layer
-        Input shape:
-            Q:       [batch_size (bs) x max_q_len x d_model]
-            K, V:    [batch_size (bs) x q_len x d_model]
-            mask:    [q_len x q_len]
-        """
+
         super().__init__()
         d_k = d_model // n_heads if d_k is None else d_k
         d_v = d_model // n_heads if d_v is None else d_v
@@ -261,19 +236,16 @@ class _MultiheadAttention(nn.Module):
         if V is None: V = Q
 
         # Linear (+ split in multiple heads)
-        q_s = self.W_Q(Q).view(bs, -1, self.n_heads, self.d_k).transpose(1,2)       # q_s    : [bs x n_heads x max_q_len x d_k]
-        k_s = self.W_K(K).view(bs, -1, self.n_heads, self.d_k).permute(0,2,3,1)     # k_s    : [bs x n_heads x d_k x q_len] - transpose(1,2) + transpose(2,3)
-        v_s = self.W_V(V).view(bs, -1, self.n_heads, self.d_v).transpose(1,2)       # v_s    : [bs x n_heads x q_len x d_v]
-
+        q_s = self.W_Q(Q).view(bs, -1, self.n_heads, self.d_k).transpose(1,2)
+        k_s = self.W_K(K).view(bs, -1, self.n_heads, self.d_k).permute(0,2,3,1)
+        v_s = self.W_V(V).view(bs, -1, self.n_heads, self.d_v).transpose(1,2)
         # Apply Scaled Dot-Product Attention (multiple heads)
         if self.res_attention:
             output, attn_weights, attn_scores = self.sdp_attn(q_s, k_s, v_s, prev=prev, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
         else:
             output, attn_weights = self.sdp_attn(q_s, k_s, v_s, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
-        # output: [bs x n_heads x q_len x d_v], attn: [bs x n_heads x q_len x q_len], scores: [bs x n_heads x max_q_len x q_len]
 
-        # back to the original inputs dimensions
-        output = output.transpose(1, 2).contiguous().view(bs, -1, self.n_heads * self.d_v) # output: [bs x q_len x n_heads * d_v]
+        output = output.transpose(1, 2).contiguous().view(bs, -1, self.n_heads * self.d_v)
         output = self.to_out(output)
 
         if self.res_attention: return output, attn_weights, attn_scores
@@ -281,10 +253,6 @@ class _MultiheadAttention(nn.Module):
 
 
 class _ScaledDotProductAttention(nn.Module):
-    r"""Scaled Dot-Product Attention module (Attention is all you need by Vaswani et al., 2017) with optional residual attention from previous layers
-    (Realformer: Transformer likes residual attention by He et al, 2020) and locality self sttention (Vision Transformer for Small-Size Datasets
-    by Lee et al, 2021)"""
-
     def __init__(self, d_model, n_heads, attn_dropout=0., res_attention=False, lsa=False):
         super().__init__()
         self.attn_dropout = nn.Dropout(attn_dropout)
@@ -294,43 +262,24 @@ class _ScaledDotProductAttention(nn.Module):
         self.lsa = lsa
 
     def forward(self, q:Tensor, k:Tensor, v:Tensor, prev:Optional[Tensor]=None, key_padding_mask:Optional[Tensor]=None, attn_mask:Optional[Tensor]=None):
-        '''
-        Input shape:
-            q               : [bs x n_heads x max_q_len x d_k]
-            k               : [bs x n_heads x d_k x seq_len]
-            v               : [bs x n_heads x seq_len x d_v]
-            prev            : [bs x n_heads x q_len x seq_len]
-            key_padding_mask: [bs x seq_len]
-            attn_mask       : [1 x seq_len x seq_len]
-        Output shape:
-            output:  [bs x n_heads x q_len x d_v]
-            attn   : [bs x n_heads x q_len x seq_len]
-            scores : [bs x n_heads x q_len x seq_len]
-        '''
 
-        # Scaled MatMul (q, k) - similarity scores for all pairs of positions in an input sequence
-        attn_scores = torch.matmul(q, k) * self.scale      # attn_scores : [bs x n_heads x max_q_len x q_len]
+        attn_scores = torch.matmul(q, k) * self.scale
 
-        # Add pre-softmax attention scores from the previous layers (optional)
         if prev is not None: attn_scores = attn_scores + prev
 
-        # Attention mask (optional)
-        if attn_mask is not None:                                     # attn_mask with shape [q_len x seq_len] - only used when q_len == seq_len
+        if attn_mask is not None:
             if attn_mask.dtype == torch.bool:
                 attn_scores.masked_fill_(attn_mask, -np.inf)
             else:
                 attn_scores += attn_mask
 
-        # Key padding mask (optional)
-        if key_padding_mask is not None:                              # mask with shape [bs x q_len] (only when max_w_len == q_len)
+        if key_padding_mask is not None:
             attn_scores.masked_fill_(key_padding_mask.unsqueeze(1).unsqueeze(2), -np.inf)
 
-        # normalize the attention weights
-        attn_weights = F.softmax(attn_scores, dim=-1)                 # attn_weights   : [bs x n_heads x max_q_len x q_len]
+        attn_weights = F.softmax(attn_scores, dim=-1)
         attn_weights = self.attn_dropout(attn_weights)
 
-        # compute the new values given the attention weights
-        output = torch.matmul(attn_weights, v)                        # output: [bs x n_heads x max_q_len x d_v]
+        output = torch.matmul(attn_weights, v)
 
         if self.res_attention: return output, attn_weights, attn_scores
         else: return output, attn_weights

@@ -1,10 +1,4 @@
-'''
-* @author: EmpyreanMoon
-*
-* @create: 2024-09-02 17:32
-*
-* @description: 
-'''
+
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -16,14 +10,14 @@ class channel_mask_generator(torch.nn.Module):
         super(channel_mask_generator, self).__init__()
         self.generator = nn.Sequential(torch.nn.Linear(patch_len, n_vars, bias=False), nn.Sigmoid())
         with torch.no_grad():
-            self.generator[0].weight.zero_()        # 生成的分布是接近 0.5 的均匀分布（经过 sigmoid）
+            self.generator[0].weight.zero_()
         self.n_vars = n_vars
 
-    def forward(self, x):  # x: [bs*patch_num, n_vars, patch_len]
+    def forward(self, x):
 
-        distribution_matrix = self.generator(x)     # distribution_matrix : [bs*patch_num, n_vars, n_vars]
+        distribution_matrix = self.generator(x)
 
-        resample_matrix = self._bernoulli_gumbel_rsample(distribution_matrix)       # 可导的二值采样
+        resample_matrix = self._bernoulli_gumbel_rsample(distribution_matrix)
 
         # 对角线强制设为1
         inverse_eye = 1 - torch.eye(self.n_vars).to(x.device)
@@ -32,7 +26,7 @@ class channel_mask_generator(torch.nn.Module):
 
         return resample_matrix
 
-    def _bernoulli_gumbel_rsample(self, distribution_matrix):       # 可导的二值采样
+    def _bernoulli_gumbel_rsample(self, distribution_matrix):
         b, c, d = distribution_matrix.shape
 
         flatten_matrix = rearrange(distribution_matrix, 'b c d -> (b c d) 1')

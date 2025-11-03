@@ -1,0 +1,6 @@
+file_name,trend,seasonal,stationary,pattern,shifting,dataset_name,type_value,train_lens,time_steps,if_univariate,size
+GECCO.csv,,,,,,Multi,,69260,,FALSE,large
+MSL.csv,,,,,,Multi,,58317,,FALSE,large
+SMD.csv,,,,,,Multi,,708405,,FALSE,large
+SMAP.csv,,,,,,Multi,,135183,,FALSE,large
+ASD.csv,,,,,,Multi,,8640,,FALSE,large

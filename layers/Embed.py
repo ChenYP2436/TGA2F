@@ -37,7 +37,7 @@ class DataEmbedding_inverted(nn.Module):
             x = self.value_embedding(x)
         else:
             x = self.value_embedding(torch.cat([x, x_mark.permute(0, 2, 1)], 1))
-        # x: [Batch Variate d_model]
+
         return self.dropout(x)
 
 class DataEmbedding_wo_pos(nn.Module):
@@ -94,7 +94,7 @@ class DataEmbedding_wo_temp(nn.Module):
 class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super(PositionalEmbedding, self).__init__()
-        # Compute the positional encodings once in logs space.
+
         pe = torch.zeros(max_len, d_model).float()
         pe.require_grad = False
 
@@ -226,7 +226,6 @@ class PatchEmbed(nn.Module):
         )
 
     def forward(self, x, x_mark=None):
-        # x = torch.cat([x, x_mark], dim=-1).transpose(-1, -2)        # x: [bs, n_vars+4, seq_len]      由于异常检测无时间标签,所以不需要时间嵌入
         x = x.transpose(-1, -2)
-        x = self.proj(x.reshape(*x.shape[:-1], self.num_p, self.patch_len))     # *x.shape[:-1] 会将元组 (bs, n_vars+4) 解包成两个独立的参数
-        return x        # x: [bs, n_vars+4, num_patch, d_model]
+        x = self.proj(x.reshape(*x.shape[:-1], self.num_p, self.patch_len))
+        return x

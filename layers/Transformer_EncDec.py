@@ -22,30 +22,26 @@ class TSEncoder(nn.Module):
 
 
 def PeriodNorm(x, period_len=4):
-    """
-    :param x: [batch, channels, seq_len] 或 [batch, channels, num_patches, patch_len]
-    :param period_len: 滑动窗口长度, 将序列按 period_len（如 4）分成重叠的块
-    :return:
-    """
-    if len(x.shape) == 3:       # x : [bs*n_vars, num_patch, d_model]
-        x = x.unsqueeze(-2)     # x : [bs*n_vars, num_patch, 1, d_model]
+
+    if len(x.shape) == 3:
+        x = x.unsqueeze(-2)
     b, c, n, t = x.shape
 
     x_patch = [x[..., period_len - 1 - i:-i + t] for i in range(0, period_len)]
-    x_patch = torch.stack(x_patch, dim=-1)      # # [bs*n_vars, num_patch, 1, d_model-(period_len-1), period_len]
+    x_patch = torch.stack(x_patch, dim=-1)
 
-    mean = x_patch.mean(4)      # 对每个滑动窗口内的值求均值，得到局部趋势
-    mean = F.pad(mean.reshape(b * c, n, -1),        # 由于滑动窗口导致序列两端缺失均值，用 replicate 模式（复制边缘值）填充左侧
+    mean = x_patch.mean(4)
+    mean = F.pad(mean.reshape(b * c, n, -1),
                  mode='replicate', pad=(period_len - 1, 0)).reshape(b, c, n, -1)
-    out = x - mean      # 用原始值减去局部均值，保留周期内的相对波动
+    out = x - mean
     return out.squeeze(-2)
 
 
 class IntAttention(nn.Module):
-    def __init__(self, attention, d_model, d_ff=None, stable_len=8, attn_map=False,     # d_ff: 前馈网络（FFN）的隐藏层维度（如 4 * d_model）
+    def __init__(self, attention, d_model, d_ff=None, stable_len=8, attn_map=False,
                  dropout=0.1, activation="relu", stable=True, enc_in=None):
         super(IntAttention, self).__init__()
-        self.stable = stable       # 稳定化处理的序列长度（用于 PeriodNorm）
+        self.stable = stable
         self.stable_len = stable_len
         self.attn_map = attn_map
         d_ff = d_ff or 4 * d_model
@@ -64,7 +60,7 @@ class IntAttention(nn.Module):
 
         y = x = self.norm1(x)
         y = self.dropout(self.activation(self.fc1(y)))
-        y = self.dropout(self.fc2(y))       # [bs, n_vars, num_patch, d_model]
+        y = self.dropout(self.fc2(y))
 
         return self.norm2(x + y), None
 
@@ -72,23 +68,20 @@ class IntAttention(nn.Module):
         b, c, n, d = x.shape
         new_x = x.reshape(-1, n, d)
 
-        qk = new_x      # [bs*n_vars, num_patch, d_model]
+        qk = new_x
         if self.stable:
-            with torch.no_grad():       # with torch.no_grad() 防止归一化操作影响梯度传播
-                qk = PeriodNorm(new_x, self.stable_len)     # 对查询（Q）和键（K）进行周期归一化，使注意力权重更关注周期内的相对模式，而非绝对趋势。
+            with torch.no_grad():
+                qk = PeriodNorm(new_x, self.stable_len)
         new_x = self.attention(qk, qk, new_x)[0]
         new_x = new_x.reshape(b, c, n, d)
         return new_x
 
 
 class IntAttention2(nn.Module):
-    """
-    变量内的注意力机制
-    """
-    def __init__(self, attention, d_model, d_ff=None, stable_len=8, attn_map=False,     # d_ff: 前馈网络（FFN）的隐藏层维度（如 4 * d_model）
+    def __init__(self, attention, d_model, d_ff=None, stable_len=8, attn_map=False,
                  dropout=0.1, activation="relu", stable=True, enc_in=None):
         super(IntAttention2, self).__init__()
-        self.stable = stable       # 稳定化处理的序列长度（用于 PeriodNorm）
+        self.stable = stable
         self.stable_len = stable_len
         self.attn_map = attn_map
         d_ff = d_ff or 4 * d_model
@@ -107,8 +100,7 @@ class IntAttention2(nn.Module):
 
         y = x = self.norm1(x)
         y = self.dropout(self.activation(self.fc1(y)))
-        y = self.dropout(self.fc2(y))       # [bs, n_vars, num_patch, d_model]
-
+        y = self.dropout(self.fc2(y))
         return self.norm2(x + y), None
 
     def temporal_attn(self, x):
@@ -144,7 +136,7 @@ class PatchSampling(nn.Module):
 
     def forward(self, x, attn_mask=None, tau=None, delta=None):
         new_x = self.down_attn(x)
-        y = x = self.norm1(new_x)       # [bs, n_vars, num_patch, d_model]
+        y = x = self.norm1(new_x)
 
         y = self.dropout(self.activation(self.fc1(y)))
         y = self.dropout(self.fc2(y))
@@ -173,8 +165,8 @@ class CointAttention(nn.Module):
         self.attention1 = attention
         self.attention2 = copy.deepcopy(attention)
 
-        self.num_rc = math.ceil(enc_in ** 0.5)          # 如果带有时间嵌入, 则这里的enc_in应换成enc_in+4
-        self.pad_ch = nn.ConstantPad1d((0, self.num_rc ** 2 - enc_in), 0)   # 如果带有时间嵌入, 则这里的enc_in应换成enc_in+4
+        self.num_rc = math.ceil(enc_in ** 0.5)
+        self.pad_ch = nn.ConstantPad1d((0, self.num_rc ** 2 - enc_in), 0)
 
         self.fc1 = nn.Linear(d_model, d_ff)
         self.fc2 = nn.Linear(d_ff, d_model)
@@ -216,8 +208,6 @@ class CointAttention(nn.Module):
         new_x = rearrange(new_x, '(b n) c d -> b c n d', b=b, n=n)
         return new_x[:, :c, :]
 
-
-#################################上面是TimeBridge的类, 下面的类是iTransformer的类###########################
 class EncoderLayer(nn.Module):
     def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
         super(EncoderLayer, self).__init__()

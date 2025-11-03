@@ -1,11 +1,3 @@
-'''
-* @author: EmpyreanMoon
-*
-* @create: 2024-08-25 20:20
-*
-* @description: various forms of frequency loss
-'''
-
 import torch
 from einops import rearrange
 import numpy as np
@@ -93,7 +85,7 @@ class frequency_criterion(torch.nn.Module):
         self.metric = frequency_loss(configs, dim=1, keep_dim=True)
         self.patch_size = configs.inference_patch_size
         self.patch_stride = configs.inference_patch_stride
-        # self.win_size = 2 * configs.seq_len         # only_cat时, win_size = 2 * seq_len
+        # self.win_size = 2 * configs.seq_len
         self.win_size = configs.seq_len
         self.patch_num = int((self.win_size - self.patch_size) / self.patch_stride + 1)
         self.padding_length = self.win_size - (self.patch_size + (self.patch_num - 1) * self.patch_stride)

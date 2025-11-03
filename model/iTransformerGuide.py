@@ -8,10 +8,6 @@ import numpy as np
 
 
 class guide_model(nn.Module):
-    """
-    Paper link: https://arxiv.org/abs/2310.06625
-    """
-
     def __init__(self, configs):
         super(guide_model, self).__init__()
         self.seq_len = configs.seq_len
@@ -46,31 +42,22 @@ class guide_model(nn.Module):
         self.projector = nn.Linear(self.d_model, self.seq_len, bias=True)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        # 修改为（安全版本）：
+
         if self.use_norm:
             means = x_enc.mean(1, keepdim=True).detach()
-            x_enc_normalized = x_enc - means  # 创建新张量
+            x_enc_normalized = x_enc - means
             stdev = torch.sqrt(torch.var(x_enc_normalized, dim=1, keepdim=True, unbiased=False) + 1e-5).detach()
-            x_enc = x_enc_normalized / stdev  # 不原地操作
+            x_enc = x_enc_normalized / stdev
 
-        _, _, N = x_enc.shape # B L N
-        # B: batch_size;    E: d_model;
-        # L: seq_len;       S: seq_len;
-        # N: number of variate (tokens), can also includes covariates
+        _, _, N = x_enc.shape
 
-        # Embedding
-        # B L N -> B N E  (B L N -> B L E in the vanilla Transformer)    [bs seq_len nvars] -> [bs n_vars d_model] 这里n_vars加上了四维时间特征
-        enc_out = self.enc_embedding(x_enc, x_mark_enc) # covariates (e.g timestamp) can be also embedded as tokens
-
-        # B N E -> B N E                (B L E -> B L E in the vanilla Transformer)
-        # the dimensions of embedded time series has been inverted, and then processed by native attn, layernorm and ffn modules
+        enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
 
         # B N E -> B N S -> B S N 
-        dec_out = self.projector(enc_out).permute(0, 2, 1)[:, :, :N] # filter the covariates
+        dec_out = self.projector(enc_out).permute(0, 2, 1)[:, :, :N]
 
         if self.use_norm:
-            # De-Normalization from Non-stationary Transformer
             dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
             dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
 
@@ -83,4 +70,4 @@ class guide_model(nn.Module):
         if self.output_attention:
             return dec_out[:, -self.pred_len:, :], attns
         else:
-            return dec_out[:, -self.pred_len:, :]  # [B, L, D]
+            return dec_out[:, -self.pred_len:, :]

@@ -39,17 +39,9 @@ def accuracy(actual: np.ndarray, predicted: np.ndarray, **kwargs):
 # ===== 新增函数 =====
 
 def auc_score(actual: np.ndarray, score: np.ndarray, **kwargs):
-    """
-    计算 AUC (Area Under ROC Curve)
-    score 为模型输出的概率或异常分数
-    """
     return metrics.roc_auc_score(actual, score)
 
 def plot_pr(actual: np.ndarray, score: np.ndarray, save_path = None, save_name = None):
-    """
-    绘制 Precision-Recall 曲线
-    score 为模型输出的概率或异常分数
-    """
     precision_vals, recall_vals, thresholds = metrics.precision_recall_curve(actual, score)
     pr_auc = metrics.auc(recall_vals, precision_vals)
 
@@ -64,10 +56,6 @@ def plot_pr(actual: np.ndarray, score: np.ndarray, save_path = None, save_name =
         plt.savefig(f"{save_path}{save_name}.png")
 
 def plot_roc(actual: np.ndarray, score: np.ndarray, save_path = None, save_name = None):
-    """
-    绘制 ROC 曲线
-    score 为模型输出的概率或异常分数
-    """
     fpr, tpr, thresholds = metrics.roc_curve(actual, score)
     roc_auc = metrics.auc(fpr, tpr)
 
